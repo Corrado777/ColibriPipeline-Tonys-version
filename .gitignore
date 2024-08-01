@@ -23,3 +23,6 @@ Testing.ipynb
 
 # ignore any .vscode files
 **/.vscode/
+
+# ignore large dataset
+**/sensitivity_test_data
