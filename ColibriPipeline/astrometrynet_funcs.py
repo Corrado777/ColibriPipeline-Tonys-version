@@ -23,7 +23,7 @@ def getSolution(image_file, save_file, order):
     ast = AstrometryNet()
     
     #key for astrometry.net account
-    ast.api_key = 'vbeenheneoixdbpb'    #key for Rachel Brown's account (040822)
+    ast.api_key = 'krhcwcktkvzepwlv'    #anthony's key
     wcs_header = ast.solve_from_image(image_file, crpix_center = True, tweak_order = order, force_image_upload=True)
 
     #save solution to file

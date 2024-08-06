@@ -301,6 +301,7 @@ if __name__ == '__main__':
 
 
     minute_dir = minute_dirs[0]
+    obs_time = minute_dir.split('_')[1]
 
     '''-------------------------------------------------------------------------------------'''
 
@@ -326,8 +327,9 @@ if __name__ == '__main__':
 
     '''--------upload image to astrometry.net for plate solution------'''
     median_image = save_path.joinpath('high_medstacked.fits')     #path to median combined file for astrometry solution
-    median_str="/mnt/d/"+str(median_image).replace('d:', '').replace('\\', '/') #10-12 Roman A.
-    median_str=median_str.lower()
+    median_str = str(median_image)
+    #median_str="/mnt/d/"+str(median_image).replace('d:', '').replace('\\', '/') #10-12 Roman A.
+    #median_str=median_str.lower()
     transform_file = save_path.joinpath(minute_dir + '_' + polynom_order + '_wcs.fits') #path to save WCS header file in
     transform_str=str(transform_file).split('\\')[-1]
 
@@ -340,8 +342,8 @@ if __name__ == '__main__':
 
     else:
         #get solution from astrometry.net
-        wcs_header = astrometrynet_funcs.getLocalSolution(median_str, transform_str, int(polynom_order[0]))
-            
+        # wcs_header = astrometrynet_funcs.getLocalSolution(median_str, transform_str, int(polynom_order[0]))
+        wcs_header = astrometrynet_funcs.getSolution(median_image, transform_file, int(polynom_order[0]))
         #calculate coordinate transformation
         transform = wcs.WCS(wcs_header)
 
