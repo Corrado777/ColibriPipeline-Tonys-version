@@ -503,7 +503,8 @@ def importFramesRCD(parentdir, filenames, start_frame, num_frames, dark, gain):
         #change time if time is wrong (29 hours)
         hour = str(headerTime).split('T')[1].split(':')[0]
         fileMinute = str(headerTime).split(':')[1]
-        dirMinute = str(parentdir).split('_')[1].split('.')[1]
+        parentdir_path = Path(parentdir)
+        dirMinute = parentdir_path.name.split('_')[1].split('.')[1]
       #  dirMinute = '30'
         
         #check if hour is bad, if so take hour from directory name and change header
@@ -761,7 +762,8 @@ def getLightcurves(folder, savefolder, ap_r, gain, telescope, detect_thresh):
     headerTimes = [first_frame[1]]                             #list of image header times
         
     #stack first few images to do star finding
-    numtoStack = 9
+    # numtoStack = 9
+    numtoStack = 10
     startIndex = 1          #don't include 1st image (vignetting)
     print('stacking images %i to %i\n' %(startIndex, numtoStack))
     stacked = stackImages(folder, savefolder, startIndex, numtoStack, dark, gain)
