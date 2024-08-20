@@ -26,3 +26,6 @@ Testing.ipynb
 
 # ignore large dataset
 **/sensitivity_test_data
+**/sensitivity_model_output
+**.mp4
+**.fits
