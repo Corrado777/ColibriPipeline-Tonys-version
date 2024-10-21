@@ -166,103 +166,36 @@ def importFramesFITS(image_paths,
 
 
 @profile
-def importFramesRCD(image_paths,
-                    start_frame=0, 
-                    num_frames=1,
-                    dark=np.zeros((1,1),dtype=np.float64)):
-    """
-    Reads in frames from .rcd files starting at a specific frame.
-    
-        Parameters:
-            image_paths (Path): pathlib object of image paths to read in
-            start_frame (int): Starting frame number
-            num_frames (int): How many frames to read in
-            dark (arr): 2D array of fluxes from dark image
-            
-        Returns:
-            img_array (arr): Image data
-            img_times (list): Header times of these images
-    """
-
-    
-    
-    ## Define pixel dimension of the square image and the memory array and list
+def importFramesRCD(image_paths, start_frame=0, num_frames=1, dark=np.zeros((1,1), dtype=np.float64)):
     IMG_DIM = 2048
     img_array = np.zeros((num_frames, IMG_DIM, IMG_DIM), dtype=np.float64)
     img_times = []
-    
-    ## Define end frame. Then evaluate if this is larger than the array
-    ## Loop which iteratively reads in the files and processes them
-    frame = 0
+
     end_frame = start_frame + num_frames
-    #print(f"Start = {start_frame}; End = {end_frame}; Len = {len(image_paths)}")
-    if end_frame > len(image_paths):
-        for fname in image_paths[start_frame:]:
-            #print(frame)
-            
-            # Load in the image data and header timestamp and subtract the dark
-            data,timestamp = readRCD(fname)
-            image = split_images(conv_12to16(data), IMG_DIM, IMG_DIM)
-            
-            # Timestamp formatted as YYYY-MM-DDThh:mm:ss.dddddddddZ
-            # Roll over the time if it exceeded 24h
-            hour = timestamp.split('T')[1].split(':')[0]
-            if int(hour) > 23:
-                timestamp = timestamp.replace('T' + hour, 'T' + str(int(hour) % 24))
-            
-            # Add corrected image and time data to appropriate array/list
-            img_array[frame] = image
-            img_times.append(timestamp)
-            frame += 1
-        UserWarning("Not enough frames in given list to import")
-            
-    elif end_frame == len(image_paths):
-        for fname in image_paths[start_frame:]:
-            #print(frame)
-            
-            # Load in the image data and header timestamp and subtract the dark
-            data,timestamp = readRCD(fname)
-            image = split_images(conv_12to16(data), IMG_DIM, IMG_DIM)
-            
-            # Timestamp formatted as YYYY-MM-DDThh:mm:ss.dddddddddZ
-            # Roll over the time if it exceeded 24h
-            hour = timestamp.split('T')[1].split(':')[0]
-            if int(hour) > 23:
-                timestamp = timestamp.replace('T' + hour, 'T' + str(int(hour) % 24))
-            
-            # Add corrected image and time data to appropriate array/list
-            img_array[frame] = image
-            img_times.append(timestamp)
-            frame += 1
-        UserWarning("At end of given list of frames")
-    
-    else:
-        for fname in image_paths[start_frame:end_frame]:
-            #print(frame)
-            
-            # Load in the image data and header timestamp and subtract the dark
-            data,timestamp = readRCD(fname)
-            image = split_images(conv_12to16(data), IMG_DIM, IMG_DIM)
-            
-            # Timestamp formatted as YYYY-MM-DDThh:mm:ss.dddddddddZ
-            # Roll over the time if it exceeded 24h
-            hour = timestamp.split('T')[1].split(':')[0]
-            if int(hour) > 23:
-                timestamp = timestamp.replace('T' + hour, 'T' + str(int(hour) % 24))
-            
-            # Add corrected image and time data to appropriate array/list
-            img_array[frame] = image
-            img_times.append(timestamp)
-            frame += 1
-            
-    
-    img_array = np.subtract(img_array, dark, dtype=np.float64)
-    
-    ## Check if only one frame was called: if so, ndim=3 -> ndim=2
+    images_to_read = image_paths[start_frame:end_frame] if end_frame <= len(image_paths) else image_paths[start_frame:]
+
+    for frame, fname in enumerate(images_to_read):
+        # Load in the image data and header timestamp
+        data, timestamp = readRCD(fname)
+        image = split_images(conv_12to16(data), IMG_DIM, IMG_DIM)
+        
+        # Timestamp formatted as YYYY-MM-DDThh:mm:ss.dddddddddZ
+        # Roll over the time if it exceeded 24h
+        hour = int(timestamp.split('T')[1].split(':')[0])
+        if hour > 23:
+            timestamp = timestamp.replace('T' + str(hour), 'T' + str(hour % 24))
+        
+        # Add corrected image and time data to appropriate array/list
+        img_array[frame] = image
+        img_times.append(timestamp)
+
+    # In-place subtraction to optimize memory usage
+    np.subtract(img_array, dark, out=img_array, dtype=np.float64)
+
     if num_frames == 1:
-        return img_array[0],img_times
+        return img_array[0], img_times
     else:
-        return img_array,img_times           
+        return img_array, img_times        
 
 
 ##############################

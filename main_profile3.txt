@@ -1,0 +1,505 @@
+dark times: [datetime.datetime(2024, 10, 18, 1, 56, 29)]
+##      Running in sequence      ##
+2024-10-21 18:59:29.797866 Opening: /home/agirmen/research_data/Colibri_Raw_Minute_Test/ColibriData/20241018/20241019_01.56.31.674
+current date: 2024-10-18 01:56:31
+using dark from: 2024-10-18 01:56:29
+2024-10-21 18:59:29.827291 Imported 2399 frames
+2024-10-21 18:59:29.827320 Checking GPS lock for  20241019_01.56.31.674
+GPS Control Block: 96
+Starfinding in field17...
+Weighting Radius for Starfinding (GaussSigma) = 0.7742919590715063
+Drift (x,y): -0.023730499669909477 px/s, 0.00015717283531557769 px/s
+/home/agirmen/research_data/Colibri_Raw_Minute_Test/ColibriData/20241018/20241019_01.56.31.674 No drift
+Negative flux: star 21
+2024-10-21 19:00:33.154958 Rejected Stars:  100.0 %
+2024-10-21 19:00:33.154979 Total stars in field: 37
+2024-10-21 19:00:33.154982 Candidate events in this minute: 0
+2024-10-21 19:00:33.154986 Closing: /home/agirmen/research_data/Colibri_Raw_Minute_Test/ColibriData/20241018/20241019_01.56.31.674
+
+
+Wrote profile results to colibri_main_py3.py.lprof
+Timer unit: 1e-06 s
+
+Total time: 48.7545 s
+File: /home/agirmen/Github/ColibriPipeline-Tonys-version/ColibriPipeline/colibri_image_reader_python.py
+Function: importFramesRCD at line 168
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   168                                           @profile
+   169                                           def importFramesRCD(image_paths, start_frame=0, num_frames=1, dark=np.zeros((1,1), dtype=np.float64)):
+   170       244        304.3      1.2      0.0      IMG_DIM = 2048
+   171       244      11303.0     46.3      0.0      img_array = np.zeros((num_frames, IMG_DIM, IMG_DIM), dtype=np.float64)
+   172       244        166.4      0.7      0.0      img_times = []
+   173                                           
+   174       244        235.5      1.0      0.0      end_frame = start_frame + num_frames
+   175       244       1045.0      4.3      0.0      images_to_read = image_paths[start_frame:end_frame] if end_frame <= len(image_paths) else image_paths[start_frame:]
+   176                                           
+   177      2662      11032.8      4.1      0.0      for frame, fname in enumerate(images_to_read):
+   178                                                   # Load in the image data and header timestamp
+   179      2418   20519836.4   8486.3     42.1          data, timestamp = readRCD(fname)
+   180      2418    4680781.8   1935.8      9.6          image = split_images(conv_12to16(data), IMG_DIM, IMG_DIM)
+   181                                                   
+   182                                                   # Timestamp formatted as YYYY-MM-DDThh:mm:ss.dddddddddZ
+   183                                                   # Roll over the time if it exceeded 24h
+   184      2418      22006.1      9.1      0.0          hour = int(timestamp.split('T')[1].split(':')[0])
+   185      2418       3099.9      1.3      0.0          if hour > 23:
+   186                                                       timestamp = timestamp.replace('T' + str(hour), 'T' + str(hour % 24))
+   187                                                   
+   188                                                   # Add corrected image and time data to appropriate array/list
+   189      2418   15341651.8   6344.8     31.5          img_array[frame] = image
+   190      2418      19340.6      8.0      0.0          img_times.append(timestamp)
+   191                                           
+   192                                               # In-place subtraction to optimize memory usage
+   193       244    8142362.7  33370.3     16.7      np.subtract(img_array, dark, out=img_array, dtype=np.float64)
+   194                                           
+   195       244       1024.4      4.2      0.0      if num_frames == 1:
+   196         2         11.0      5.5      0.0          return img_array[0], img_times
+   197                                               else:
+   198       242        278.6      1.2      0.0          return img_array, img_times        
+
+Total time: 63.3987 s
+File: ColibriPipeline/colibri_main_py3.py
+Function: firstOccSearch at line 215
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   215                                           @profile
+   216                                           def firstOccSearch(minuteDir, MasterDarkList, kernel, exposure_time, sigma_threshold,
+   217                                                              base_path,obs_date,
+   218                                                              telescope='TEST',RCDfiles = True, gain_high = True):
+   219                                               """ 
+   220                                               Formerly 'main'.
+   221                                               Detect possible occultation events in selected file and archive results 
+   222                                               
+   223                                                   Parameters:
+   224                                                       minuteDir (str): Filepath to current directory
+   225                                                       MasterDarkList (list): List of master darks and times
+   226                                                       kernel (arr): Ricker wavelet kernel
+   227                                                       exposure_time (int/float): Camera exposure time (in s)
+   228                                                       sigma_threshold (float): Sensitivity of the detection filter
+   229                                                       base_path (str): Path to root directory containing Archive and Data
+   230                                                       obs_date (str): Date of observation (as marked on the data 
+   231                                                                       directory to be analyzed)
+   232                                                   
+   233                                                   Returns:
+   234                                                       __ (str): Printout of processing tasks
+   235                                                       __ (.npy): .npy format file with star positions (if doesn't exist)
+   236                                                       __ (.txt): .txt format file for each occultation event with names
+   237                                                                  of images to be saved
+   238                                                       __ (int/float): time of saved occultation event images
+   239                                                       __ (float): flux of occulted star in saved images
+   240                                                       star_count (int): Number of detected stars in the given minuteDir
+   241                                               """
+   242                                           
+   243                                           
+   244                                           ###########################
+   245                                           ## Analysis Setup
+   246                                           ###########################
+   247                                           
+   248         1         17.9     17.9      0.0      print (f"{datetime.datetime.now()} Opening: {minuteDir}")
+   249                                           
+   250                                               ## Create folder for results
+   251         1         33.7     33.7      0.0      savefolder = base_path.joinpath('ColibriArchive', str(obs_date))
+   252         1         15.1     15.1      0.0      if not savefolder.exists():
+   253                                                   savefolder.mkdir()      
+   254                                           
+   255                                               ## Select and load the master dark closest in time to the current minute
+   256         1      12958.2  12958.2      0.0      dark = cir.chooseDark(minuteDir, MasterDarkList, obs_date)
+   257                                           
+   258                                               ## Get a sorted list of images in this minute directory, ignoring the first
+   259                                               ## due to vignetting
+   260         1      16355.1  16355.1      0.0      imagePaths = sorted(minuteDir.glob('*.rcd'))     
+   261         1          2.3      2.3      0.0      del imagePaths[0]
+   262                                                   
+   263                                               ## Idenitify important characteristics from name and length of images list
+   264         1          6.3      6.3      0.0      field_name = imagePaths[0].name.split('_')[0]  #which of 24 fields are observed
+   265         1          7.4      7.4      0.0      x_length, y_length, num_images = cir.getSizeRCD(imagePaths)
+   266                                           
+   267         1         23.0     23.0      0.0      print(datetime.datetime.now(), "Imported", num_images, "frames")
+   268                                               
+   269                                               ## Check if there are enough images in the current directory 
+   270         1          6.7      6.7      0.0      minNumImages = len(kernel.array)*3         #3x kernel length
+   271         1          1.3      1.3      0.0      if num_images < minNumImages:
+   272                                                   print(datetime.datetime.now(), "Insufficient number of images, skipping...")
+   273                                                   return minuteDir.name, 0, 0
+   274                                               
+   275                                               ## Check if there is a valid GPS lock
+   276         1          3.2      3.2      0.0      print(datetime.datetime.now(), "Checking GPS lock for ", minuteDir.name)
+   277         1         72.7     72.7      0.0      if not cir.testGPSLock(imagePaths[0]):
+   278                                                   print(datetime.datetime.now(), "No GPS Lock established, skipping...")
+   279                                                   return minuteDir.name, 0, 0
+   280                                               
+   281                                           
+   282                                           ###########################
+   283                                           ## Star Identification
+   284                                           ###########################
+   285                                               
+   286                                               #print (datetime.datetime.now(), field_name, 'starfinding...',)
+   287         1          2.6      2.6      0.0      print(f"Starfinding in {field_name}...")
+   288                                               
+   289                                               ## Create median combined image for star finding
+   290         1          0.2      0.2      0.0      try:
+   291         1     642488.3 642488.3      1.0          stacked = cir.stackImages(minuteDir, savefolder, NUM_TO_SKIP, NUM_TO_STACK, dark)
+   292                                               ## Prevents program from crashing if there are corrupt images
+   293                                               except UnicodeDecodeError:
+   294                                                   print(f"ERROR: UnicodeDecodeError in {minuteDir.name}")
+   295                                                   return minuteDir.name, 0, 0
+   296                                           
+   297                                               ## Make list of star coords and half light radii using a conservative
+   298                                               ## threshold scaled to the number of images stacked
+   299         1      45295.5  45295.5      0.1      star_find_results = tuple(cp.initialFind(stacked, DETECT_THRESH*NUM_TO_STACK**0.5))
+   300                                           
+   301                                               ## Remove stars where centre is too close to edge of frame
+   302         1          0.4      0.4      0.0      edge_buffer = 10     #number of pixels between edge of star aperture and edge of image
+   303                                               #star_find_results = tuple(x for x in star_find_results if x[0] + AP_R + edge_buffer < x_length and x[0] - AP_R - edge_buffer > 0)
+   304                                               #star_find_results = tuple(y for y in star_find_results if y[1] + AP_R + edge_buffer < x_length and y[1] - AP_R - edge_buffer > 0)
+   305         1         25.6     25.6      0.0      star_find_results = tuple(x for x in star_find_results if x[0] + edge_buffer < x_length and x[0] - edge_buffer > 0)
+   306         1         10.6     10.6      0.0      star_find_results = tuple(y for y in star_find_results if y[1] + edge_buffer < x_length and y[1] - edge_buffer > 0)
+   307                                           
+   308                                           
+   309                                               ## Save the array of star positions as an .npy file
+   310                                               ## Format: x  |  y  | half light radius
+   311         1          1.9      1.9      0.0      if len(star_find_results) >= NPY_STARS:
+   312         1         64.6     64.6      0.0          star_pos_file = base_path.joinpath('ColibriArchive', str(obs_date), minuteDir.name + '_' + str(DETECT_THRESH) + 'sig_pos.npy')
+   313         1         31.2     31.2      0.0          if star_pos_file.exists():
+   314         1         92.0     92.0      0.0              star_pos_file.unlink()
+   315         1        227.3    227.3      0.0          np.save(star_pos_file, star_find_results)
+   316                                           
+   317                                           
+   318                                               ## Enforce a minimum number of visible stars in each image
+   319         1          0.8      0.8      0.0      if len(star_find_results) < MIN_STARS:
+   320                                                   print(f"Insufficient stars in minute: {minuteDir}")
+   321                                                   print (f"{datetime.datetime.now()} Closing: {minuteDir}")
+   322                                                   print ("\n")
+   323                                                   return minuteDir.name, len(star_find_results), 0
+   324                                                   
+   325                                               ## Seperate radii and positions in separate arrays
+   326         1          9.2      9.2      0.0      star_find_results = np.array(star_find_results)
+   327         1          1.2      1.2      0.0      radii = star_find_results[:,-1]
+   328         1          0.7      0.7      0.0      initial_positions = star_find_results[:,:-1]
+   329                                           
+   330                                               ## Number of stars identified in image
+   331         1          0.4      0.4      0.0      num_stars = len(initial_positions)
+   332                                               
+   333                                               
+   334                                           ###########################
+   335                                           ## Drift Calculations
+   336                                           ########################### 
+   337                                           
+   338                                               ## Initialize centroid refining parameters
+   339         1         12.9     12.9      0.0      drift_pos = np.empty([2, num_stars], dtype = (np.float64, 2))  #array to hold first and last positions
+   340         1         64.6     64.6      0.0      GaussSigma = np.mean(radii * 2. / 2.35)  # calculate gaussian sigma for each star's light profile
+   341         1          9.9      9.9      0.0      print(f"Weighting Radius for Starfinding (GaussSigma) = {GaussSigma}")
+   342                                           
+   343                                               ## Import the first frame and last frame for starfinding purposes
+   344         1      13347.3  13347.3      0.0      fframe_data,fframe_time = cir.importFramesRCD(imagePaths, NUM_TO_SKIP, 1, dark)   #import first image
+   345         1      12909.8  12909.8      0.0      lframe_data,lframe_time = cir.importFramesRCD(imagePaths, len(imagePaths)-1, 1, dark)  #import last image
+   346         1          0.8      0.8      0.0      headerTimes = [fframe_time] #list of image header times
+   347                                           
+   348                                               ## Refine star positions for first and last image (also returns frame times)
+   349         1        394.3    394.3      0.0      first_drift = cp.refineCentroid(fframe_data,fframe_time[0], initial_positions, GaussSigma)
+   350         1        301.2    301.2      0.0      last_drift = cp.refineCentroid(lframe_data,lframe_time[0], first_drift[0], GaussSigma*DRIFT_MULT)
+   351                                           
+   352                                               ## Organize frame times and centroid positions into containers
+   353         1          5.2      5.2      0.0      drift_pos[0] = first_drift[0]  # first frame positions
+   354         1          0.6      0.6      0.0      drift_pos[1] = last_drift[0]  # last frame positions
+   355         1          0.3      0.3      0.0      drift_times = [first_drift[1], last_drift[1]]  # frame times
+   356         1        856.6    856.6      0.0      drift_times = Time(drift_times, precision=9).unix  # convert times to unix
+   357                                           
+   358                                               ## Calculate median drift rate [px/s] in x and y over the minute
+   359         1         91.3     91.3      0.0      x_drift, y_drift = cp.averageDrift(drift_pos[0],drift_pos[1], drift_times[0],drift_times[1])
+   360         1          9.2      9.2      0.0      print(f"Drift (x,y): {x_drift} px/s, {y_drift} px/s")
+   361                                               
+   362                                               ## Decide whether to apply drift modifications to frame analysis using a
+   363                                               ## tolerence threshold. If the drift values are too large, disregard this
+   364                                               ## minute as a tracking error. Rates in px/s.
+   365         1          0.9      0.9      0.0      if abs(x_drift) > MAX_DRIFT or abs(y_drift) > MAX_DRIFT:
+   366                                                   print (f"{datetime.datetime.now()} Significant drift. Skipping {minuteDir}...") 
+   367                                                   return minuteDir.name, num_stars, 0
+   368         1          0.4      0.4      0.0      elif abs(x_drift) > DRIFT_TOL or abs(y_drift) > DRIFT_TOL:
+   369                                                   drift = True # variable to check whether stars have drifted since last frame
+   370                                               else:
+   371         1          0.2      0.2      0.0          drift = False
+   372                                           
+   373                                           
+   374                                           ###########################
+   375                                           ## Flux Measurements
+   376                                           ########################### 
+   377                                           
+   378                                               ## Define the container containing the flux measurements of all images
+   379                                               ## with each frame holding a ( num_stars * 4 ) sized array.
+   380                                               ## [0] x coorinate; [1] y coordinate; [2] flux; [3] frame time
+   381         1          1.9      1.9      0.0      starData = np.empty((num_images, num_stars, 4), dtype=np.float64)
+   382                                               
+   383                                               ## Fill the first data frame with information from the first image
+   384         2         18.4      9.2      0.0      starData[0] = tuple(zip(initial_positions[:,0], 
+   385         1          0.3      0.3      0.0                          initial_positions[:,1], 
+   386                                                                   #sumFlux(first_frame[0], initial_positions[:,0], initial_positions[:,1], AP_R),
+   387                                                                   # (sep.sum_circle(fframe_data, initial_positions[:,0], initial_positions[:,1], AP_R)[0]).tolist(),
+   388         1         77.0     77.0      0.0                          (sep.sum_circle(fframe_data, initial_positions[:,0], initial_positions[:,1], AP_R)[0]).tolist(),
+   389         1        305.8    305.8      0.0                          np.ones(np.shape(np.array(initial_positions))[0]) * (Time(fframe_time, precision=9).unix)))
+   390                                           
+   391                                           
+   392                                               ## Iteratively process the images and put the results into starData
+   393         1          0.2      0.2      0.0      if drift:  # If drift compensation is required, enter this loop
+   394                                               
+   395                                                   print(f"{minuteDir} Drifted - applying drift to photometry {x_drift} {y_drift}")
+   396                                                   
+   397                                                   # Loop through each image in the minute-long dataset in chunks
+   398                                                   residual   = (num_images-1)%CHUNK_SIZE
+   399                                                   for i in range((num_images-1)//CHUNK_SIZE):
+   400                                                       # Read in the images in a given chunk
+   401                                                       imageFile,imageTime = cir.importFramesRCD(imagePaths,CHUNK_SIZE*i+1, CHUNK_SIZE, dark)
+   402                                                       headerTimes = headerTimes + imageTime
+   403                                                       for j in range(CHUNK_SIZE):
+   404                                                           # Process the images in the current chunk
+   405                                                           starData[CHUNK_SIZE*i+j+1] = cp.timeEvolve(imageFile[j],
+   406                                                                                                       deepcopy(starData[CHUNK_SIZE*i+j]),
+   407                                                                                                       imageTime[j],
+   408                                                                                                       AP_R,
+   409                                                                                                       num_stars,
+   410                                                                                                       (x_length, y_length),
+   411                                                                                                       (x_drift, y_drift))
+   412                                                           gc.collect()
+   413                                                       
+   414                                                   # Read in the remaining images
+   415                                                   imageFile,imageTime = cir.importFramesRCD(imagePaths,
+   416                                                                                             num_images-residual,
+   417                                                                                             residual,
+   418                                                                                             dark)
+   419                                                   headerTimes = headerTimes + imageTime
+   420                                                   
+   421                                                   # Process the remaining images
+   422                                                   for i in range(residual+1)[:0:-1]:
+   423                                                       starData[num_images-i] = cp.timeEvolve(imageFile[residual-i],
+   424                                                                                               deepcopy(starData[num_images-i-1]),
+   425                                                                                               imageTime[residual-i],
+   426                                                                                               AP_R,
+   427                                                                                               num_stars,
+   428                                                                                               (x_length, y_length),
+   429                                                                                               (x_drift, y_drift))        
+   430                                                   gc.collect()
+   431                                                   
+   432                                                       
+   433                                               else:  # if there is not significant drift, don't account for drift  in photometry
+   434                                                   
+   435         1          4.7      4.7      0.0          print(f'{minuteDir} No drift')
+   436                                                   
+   437                                                   # Loop through each image in the minute-long dataset in chunks
+   438         1          0.5      0.5      0.0          residual   = (num_images-1)%CHUNK_SIZE
+   439       240        767.1      3.2      0.0          for i in range((num_images-1)//CHUNK_SIZE):
+   440                                                       # Read in the images in a given chunk
+   441       239   48840219.8 204352.4     77.0              imageFile,imageTime = cir.importFramesRCD(imagePaths,CHUNK_SIZE*i+1, CHUNK_SIZE, dark)
+   442       239       4430.7     18.5      0.0              headerTimes = headerTimes + imageTime
+   443                                                       # Process the the current chunk all at once
+   444       478     691465.0   1446.6      1.1              starData[CHUNK_SIZE*i+1:CHUNK_SIZE*(i+1)+1] = cp.getStationaryFlux(imageFile,
+   445       239      14422.4     60.3      0.0                                                                                 deepcopy(starData[CHUNK_SIZE*i]),
+   446       239        289.1      1.2      0.0                                                                                 imageTime,
+   447       239        270.3      1.1      0.0                                                                                 AP_R,
+   448       239        106.9      0.4      0.0                                                                                 num_stars,
+   449       239        142.5      0.6      0.0                                                                                 (x_length, y_length))
+   450                                                           
+   451       239   12817284.1  53628.8     20.2              gc.collect()
+   452                                                       
+   453                                                   # Read in the remaining images
+   454         2     158446.8  79223.4      0.2          imageFile,imageTime = cir.importFramesRCD(imagePaths,
+   455         1          2.6      2.6      0.0                                                    num_images-(num_images-1)%CHUNK_SIZE,
+   456         1          0.4      0.4      0.0                                                    (num_images-1)%CHUNK_SIZE,
+   457         1          0.3      0.3      0.0                                                    dark)
+   458         1         26.7     26.7      0.0          headerTimes = headerTimes + imageTime
+   459                                                   # Process the residual chunk
+   460         2       2395.2   1197.6      0.0          starData[num_images-residual:] = cp.getStationaryFlux(imageFile,
+   461         1         60.7     60.7      0.0                                                                deepcopy(starData[num_images-residual-1]),
+   462         1          0.2      0.2      0.0                                                                imageTime,
+   463         1          1.5      1.5      0.0                                                                AP_R,
+   464         1          0.3      0.3      0.0                                                                num_stars,
+   465         1          0.8      0.8      0.0                                                                (x_length, y_length))
+   466                                                           
+   467         1      49672.1  49672.1      0.1          gc.collect()
+   468                                               
+   469                                           
+   470                                               """
+   471                                               # Roman's photometry plotting section
+   472                                               import matplotlib.pyplot as plt
+   473                                               for starNum in range(0,num_stars):
+   474                                               flux=starData[:, starNum, 2]
+   475                                               x_coords_in=starData[0][starNum][0]
+   476                                               y_coords_in=starData[0][starNum][1]
+   477                                               x_coords_fi=starData[-1][starNum][0]
+   478                                               y_coords_fi=starData[-1][starNum][1]
+   479                                               fig, ax1 = plt.subplots()
+   480                                               ax1.scatter(range(0,len(starData)), flux,label="initial pos: x="+str(x_coords_in)+" y="+str(y_coords_in)+"\n final pos: x="+str(x_coords_fi)+" y="+str(y_coords_fi))
+   481                                               plt.legend()
+   482                                               plot_path=base_path.joinpath('ColibriArchive', str(obs_date), minuteDir.name)
+   483                                               if not os.path.exists(plot_path):
+   484                                                   os.mkdir(plot_path)
+   485                                               plt.savefig(plot_path.joinpath('_star_'+str(i) + '.png'))
+   486                                               
+   487                                               plt.close()
+   488                                               for i in range(len(starData[0])):
+   489                                                   flux=[]
+   490                                                   frame=[]
+   491                                                   x_coords_in=starData[0][i][0]
+   492                                                   y_coords_in=starData[0][i][1]
+   493                                                   x_coords_fi=starData[-1][i][0]
+   494                                                   y_coords_fi=starData[-1][i][1]
+   495                                                   for j in range(len(starData)):
+   496                                                       flux.append(starData[j][i][2])
+   497                                                       frame.append(j)
+   498                                                       
+   499                                                   
+   500                                                   fig, ax1 = plt.subplots()
+   501                                                   ax1.scatter(frame, flux,label="initial pos: x="+str(x_coords_in)+" y="+str(y_coords_in)+"\n final pos: x="+str(x_coords_fi)+" y="+str(y_coords_fi))
+   502                                                   plt.legend()
+   503                                                   plot_path=base_path.joinpath('ColibriArchive', str(obs_date), minuteDir.name)
+   504                                                   if not os.path.exists(plot_path):
+   505                                                       os.mkdir(plot_path)
+   506                                                   plt.savefig(plot_path.joinpath('_star_'+str(i) + '.png'))
+   507                                                   
+   508                                                   plt.close()
+   509                                               """
+   510                                           
+   511                                           
+   512                                           
+   513                                           ###########################
+   514                                           ## Dip Detection
+   515                                           ###########################
+   516                                              
+   517                                               #loop through each detected object
+   518         2      25013.1  12506.6      0.0      dipResults = np.array([cp.dipDetection(starData[:, starNum, 2], kernel, starNum, sigma_threshold) for starNum in range(0,num_stars)],
+   519         1          1.0      1.0      0.0                            dtype=object)
+   520                                              
+   521                                               
+   522         1          0.9      0.9      0.0      event_frames = dipResults[:,0]         #array of event frames (-1 if no event detected, -2 if incomplete data)
+   523         1          0.4      0.4      0.0      light_curves = dipResults[:,1]         #array of light curves (empty if no event detected)
+   524                                               
+   525         1          0.3      0.3      0.0      conv_flux=dipResults[:,2]              #array of convolved light curves (empty if no event detected)
+   526         1          0.4      0.4      0.0      lightcurve_std=dipResults[:,3]          #std of minute-long lightcurve
+   527         1          0.4      0.4      0.0      lightcurve_mean= dipResults[:,4]        #mean of minute-long lightcurve
+   528         1          0.3      0.3      0.0      Bkg_std= dipResults[:,5]                #std of convolved flux background
+   529         1          0.3      0.3      0.0      Bkg_mean= dipResults[:,6]               #mean of convolved flux background
+   530         1          0.6      0.6      0.0      conv_min= dipResults[:,7]               #minimum value of the convolution
+   531         1          0.5      0.5      0.0      significance=dipResults[:,8]          #significance of the event x*sigma
+   532                                           
+   533                                               ''' data archival '''
+   534                                           
+   535         1         13.2     13.2      0.0      save_frames = event_frames[np.where(event_frames > 0)]  #frame numbers for each event to be saved
+   536         1          2.1      2.1      0.0      save_chunk = int(round(EVENT_WIDTH / exposure_time))  #save certain num of frames on both sides of event
+   537         1          3.0      3.0      0.0      save_curves = light_curves[np.where(event_frames > 0)]  #light curves for each star to be saved
+   538                                               #save_types = dip_types[np.where(event_frames > 0)]
+   539                                               
+   540         1          2.5      2.5      0.0      save_conv_flux=conv_flux[np.where(event_frames > 0)]    #save convolved flux for each event
+   541         1          2.5      2.5      0.0      save_lc_std=lightcurve_std[np.where(event_frames > 0)]  #save lightcurve std for each event
+   542         1          2.2      2.2      0.0      save_lc_mean=lightcurve_mean[np.where(event_frames > 0)]#save lightcurve mean
+   543         1          2.2      2.2      0.0      save_bkg_std=Bkg_std[np.where(event_frames > 0)]        #save background std of convolved lightcurve
+   544         1          2.1      2.1      0.0      save_bkg_mean=Bkg_mean[np.where(event_frames > 0)]      #save background mean of convolved lightcurve
+   545         1          2.1      2.1      0.0      save_minVal=conv_min[np.where(event_frames > 0)]        #save minimum value of the convolution
+   546         1          2.1      2.1      0.0      save_sigma=significance[np.where(event_frames > 0)]     #save significance of each event
+   547                                           
+   548                                               #loop through each detected event
+   549         1          0.3      0.3      0.0      j=0
+   550         1          2.6      2.6      0.0      for f in save_frames:
+   551                                                   
+   552                                                   date = headerTimes[f].split('T')[0]                                 #date of event
+   553                                                   time = headerTimes[f].split('T')[1].split('.')[0].replace(':','')   #time of event
+   554                                                   star_coords = initial_positions[np.where(event_frames == f)[0][0]]     #coords of occulted star
+   555                                                   mstime = headerTimes[f].split('T')[1].split('.')[1]                 # micros time of event
+   556                                                  # print(datetime.datetime.now(), ' saving event in frame', f)
+   557                                                   
+   558                                                   star_all_flux = save_curves[np.where(save_frames == f)][0]  #total light curve for current occulted star
+   559                                                   star_all_conv=save_conv_flux[np.where(save_frames == f)][0] #total convolved light curve for current occulted star
+   560                                                   #text file to save results in
+   561                                                   #saved file format: 'det_date_time_star#_telescope.txt'
+   562                                           
+   563                                                   savefile = base_path.joinpath('ColibriArchive', str(obs_date), ''.join(('det_', date, '_', time, '_', mstime, '_star', str(np.where(event_frames == f)[0][0]), '_', telescope, '.txt')))
+   564                                                   #columns: fits filename and path | header time (seconds) |  star flux
+   565                                                   
+   566                                                   #open file to save results
+   567                                                   # with open(savefile, 'w') as filehandle:
+   568                                                       
+   569                                                   #     #file header
+   570                                                   #     filehandle.write('#\n#\n#\n#\n')
+   571                                                   #     filehandle.write('#    Event File: %s\n' %(imagePaths[f]))
+   572                                                   #     filehandle.write('#    Star Coords: %f %f\n' %(star_coords[0], star_coords[1]))
+   573                                                   #     filehandle.write('#    DATE-OBS: %s\n' %(headerTimes[f]))
+   574                                                   #     filehandle.write('#    Telescope: %s\n' %(telescope))
+   575                                                   #     filehandle.write('#    Field: %s\n' %(field_name))
+   576                                                   #     filehandle.write('#    Dip Type: %s\n' %(save_types[np.where(save_frames == f)][0]))
+   577                                                   #     filehandle.write('#    Median Flux: %.2f\n' %(np.median(star_all_flux)))
+   578                                                   #     filehandle.write('#    Stddev Flux: %.3f\n' %(np.std(star_all_flux)))
+   579                                                   #     filehandle.write('#\n#\n#\n')
+   580                                                   #     filehandle.write('#filename     time      flux\n')
+   581                                                   
+   582                                                   with open(savefile, 'w') as filehandle:
+   583                                                       
+   584                                                       #file header
+   585                                                       filehandle.write('#\n#\n#\n#\n')
+   586                                                       filehandle.write('#    Event File: %s\n' %(imagePaths[f]))
+   587                                                       filehandle.write('#    Star Coords: %f %f\n' %(star_coords[0], star_coords[1]))
+   588                                                       filehandle.write('#\n')
+   589                                                       filehandle.write('#    DATE-OBS: %s\n' %(headerTimes[f]))
+   590                                                       filehandle.write('#    Telescope: %s\n' %(telescope))
+   591                                                       filehandle.write('#    Field: %s\n' %(field_name))
+   592                                                       filehandle.write('#    significance: %.3f\n' %(save_sigma[j]))
+   593                                                       filehandle.write('#    Raw lightcurve std: %.4f\n' %(save_lc_std[j]))
+   594                                                       filehandle.write('#    Raw lightcurve mean: %.4f\n' %(save_lc_mean[j]))
+   595                                                       filehandle.write('#    Convolution background std: %.4f\n' %(save_bkg_std[j]))
+   596                                                       filehandle.write('#    Convolution background mean: %.4f\n' %(save_bkg_mean[j]))
+   597                                                       filehandle.write('#    Convolution minimal value: %.4f\n' %(save_minVal[j]))
+   598                                                       filehandle.write('#\n#\n')
+   599                                                       filehandle.write('#filename     time      flux     conv_flux\n')
+   600                                                      
+   601                                                       ''' save data '''
+   602                                                       j=j+1
+   603                                                      #if the portion of the light curve is at the beginning, start at 0th image
+   604                                                       if f - save_chunk <= 0:  
+   605                                                   
+   606                                                           files_to_save = [imagePath for i, imagePath in enumerate(imagePaths) if i >= 0 and i < f + save_chunk]  #list of filenames to save
+   607                                                           star_save_flux = star_all_flux[np.where(np.in1d(imagePaths, files_to_save))[0]]                         #part of light curve to save
+   608                                                           star_save_conv= star_all_conv[np.where(np.in1d(imagePaths, files_to_save))[0]]
+   609                                                           
+   610                                                           #loop through each frame to be saved
+   611                                                           for i in range(0, len(files_to_save)):  
+   612                                                               filehandle.write('%s %f  %f  %f\n' % (files_to_save[i], float(headerTimes[:f + save_chunk][i].split(':')[2].split('Z')[0]), star_save_flux[i], star_save_conv[i]))
+   613                                                       
+   614                                                       #if portion of light curve to save is not at the beginning
+   615                                                       else:
+   616                                                           
+   617                                                           #if the portion of the light curve to save is at the end of the minute, end at the last image
+   618                                                           if f + save_chunk >= num_images:
+   619                                                   
+   620                                                               files_to_save = [imagePath for i, imagePath in enumerate(imagePaths) if i >= f - save_chunk]    #list of filenames to save (RAB 042222)
+   621                                                               star_save_flux = star_all_flux[np.where(np.in1d(imagePaths, files_to_save))[0]]                                                     #part of light curve to save
+   622                                                               star_save_conv= star_all_conv[np.where(np.in1d(imagePaths, files_to_save))[0]]
+   623                                                               
+   624                                                               #loop through each frame to save
+   625                                                               for i in range(0, len(files_to_save)): 
+   626                                                                   filehandle.write('%s %f %f  %f\n' % (files_to_save[i], float(headerTimes[f - save_chunk:][i].split(':')[2].split('Z')[0]), star_save_flux[i], star_save_conv[i]))
+   627                                           
+   628                                                           #if the portion of the light curve to save is not at beginning or end of the minute, save the whole portion around the event
+   629                                                           else:  
+   630                                           
+   631                                                               files_to_save = [imagePath for i, imagePath in enumerate(imagePaths) if i >= f - save_chunk and i < f + save_chunk]     #list of filenames to save
+   632                                                               star_save_flux = star_all_flux[np.where(np.in1d(imagePaths, files_to_save))[0]]                                         #part of light curve to save                    
+   633                                                               star_save_conv= star_all_conv[np.where(np.in1d(imagePaths, files_to_save))[0]]
+   634                                                               
+   635                                                               #loop through each frame to save
+   636                                                               for i in range(0, len(files_to_save)): 
+   637                                                                   filehandle.write('%s %f %f  %f\n' % (files_to_save[i], float(headerTimes[f - save_chunk:f + save_chunk][i].split(':')[2].split('Z')[0]), star_save_flux[i], star_save_conv[i]))
+   638                                           
+   639                                           
+   640                                           
+   641                                               ''' printout statements'''
+   642         1         23.5     23.5      0.0      print (datetime.datetime.now(), "Rejected Stars: ", round(((num_stars - len(save_frames)) / num_stars)*100, 2), "%")
+   643         1          2.4      2.4      0.0      print (datetime.datetime.now(), "Total stars in field:", num_stars)
+   644         1          2.8      2.8      0.0      print (datetime.datetime.now(), "Candidate events in this minute:", len(save_frames))
+   645         1          5.8      5.8      0.0      print (datetime.datetime.now(), "Closing:", minuteDir)
+   646         1          0.5      0.5      0.0      print ("\n")
+   647                                           
+   648                                               #print("Drift calcs",c3)
+   649                                               
+   650                                               # return number of stars in field
+   651         1      47389.8  47389.8      0.1      gc.collect()
+   652         1         13.0     13.0      0.0      return minuteDir.name, num_stars, len(save_frames)
+
