@@ -212,6 +212,7 @@ def writePrimarySummary(obsdate, processing_time='None'):
 ## Main Functions
 ###########################
 
+@profile
 def firstOccSearch(minuteDir, MasterDarkList, kernel, exposure_time, sigma_threshold,
                    base_path,obs_date,
                    telescope='TEST',RCDfiles = True, gain_high = True):
@@ -802,7 +803,7 @@ if __name__ == '__main__':
         print(f"Ran for {end_time - start_time} seconds", file=sys.stderr)
 
     else:
-        raise NotImplementedError("Not running in parallel needs maitenance.\nSorry for the inconvenience!\n-Peter Q (2022/11/05)")
+        # raise NotImplementedError("Not running in parallel needs maitenance.\nSorry for the inconvenience!\n-Peter Q (2022/11/05)")
         
         print('##      Running in sequence      ##')
         start_time = timer.time()
