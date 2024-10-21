@@ -28,7 +28,7 @@ from copy import deepcopy
 from multiprocessing import Pool
 
 # Custom Script Imports
-import colibri_image_reader as cir
+import colibri_image_reader_python as cir
 import colibri_photometry as cp
 import colibri_tools as ct
 
